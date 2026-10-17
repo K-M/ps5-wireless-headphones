@@ -1,0 +1,8 @@
+{
+  "name": "PS5 wireless headphones - transmitter (Wi-Fi channel 6)",
+  "version": "1.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    { "chipFamily": "ESP32-S3", "parts": [ { "path": "transmitter-ch6.bin", "offset": 0 } ] }
+  ]
+}

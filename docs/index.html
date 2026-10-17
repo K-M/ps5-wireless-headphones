@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PS5 Wireless Headphones Flasher</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module"></script>
+<style>
+  :root { --bg:#fafafa; --fg:#1a1a1a; --muted:#666; --card:#fff; --line:#e3e3e3; --accent:#0a64d6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111; --fg:#eee; --muted:#9a9a9a; --card:#1b1b1b; --line:#2c2c2c; --accent:#5aa2ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 28px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
+  .card h2 { font-size:1.1rem; margin:0 0 6px; }
+  .card p, .card li { color:var(--muted); margin:4px 0; }
+  .card ol { padding-left:20px; margin:8px 0 14px; }
+  label { font-weight:600; margin-right:8px; }
+  select { font:inherit; padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
+  esp-web-install-button button[slot="activate"] {
+    font:inherit; font-weight:600; padding:10px 18px; border:0; border-radius:8px; background:var(--accent); color:#fff; cursor:pointer;
+  }
+  .warn { font-size:.9rem; color:var(--muted); }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>PS5 Wireless Headphones — Flasher</h1>
+  <p class="sub">Flash both boards from Chrome or Edge on a computer. No tools to install.</p>
+
+  <div class="card">
+    <label for="ch">Wi-Fi channel</label>
+    <select id="ch">
+      <option value="13" selected>13 (recommended)</option>
+      <option value="11">11</option>
+      <option value="6">6</option>
+      <option value="1">1</option>
+    </select>
+    <p class="warn">Both boards must use the same channel. Pick the one with the fewest Wi-Fi networks near you; if you hear dropouts, try another.</p>
+  </div>
+
+  <div class="card">
+    <h2>1. Transmitter (plugs into the PS5)</h2>
+    <ol>
+      <li>Hold the board's <b>BOOT</b> button while plugging it into this computer, then release.</li>
+      <li>Click below and pick the new serial port.</li>
+    </ol>
+    <esp-web-install-button id="tx" manifest="firmware/transmitter-ch13.json">
+      <button slot="activate">Install transmitter</button>
+      <span slot="unsupported">Use Chrome or Edge on a desktop.</span>
+      <span slot="not-allowed">This page must be opened over HTTPS.</span>
+    </esp-web-install-button>
+  </div>
+
+  <div class="card">
+    <h2>2. Receiver (drives the USB headphone dongle)</h2>
+    <ol>
+      <li>Enter download mode: bridge the <b>B1</b> pad/pin to <b>GND</b> and tap <b>RESET</b> (Waveshare ESP32-S3-Nano has no BOOT button), then remove the bridge after flashing.</li>
+      <li>Click below and pick the serial port.</li>
+    </ol>
+    <esp-web-install-button id="rx" manifest="firmware/receiver-ch13.json">
+      <button slot="activate">Install receiver</button>
+      <span slot="unsupported">Use Chrome or Edge on a desktop.</span>
+      <span slot="not-allowed">This page must be opened over HTTPS.</span>
+    </esp-web-install-button>
+  </div>
+
+  <p class="warn">After flashing, unplug and re-plug each board (or tap RESET). Source and wiring: <a href="https://github.com/K-M/ps5-wireless-headphones">see the repository README</a>.</p>
+</main>
+<script>
+  const sel = document.getElementById('ch');
+  sel.addEventListener('change', () => {
+    document.getElementById('tx').setAttribute('manifest', `firmware/transmitter-ch${sel.value}.json`);
+    document.getElementById('rx').setAttribute('manifest', `firmware/receiver-ch${sel.value}.json`);
+  });
+</script>
+</body>
+</html>

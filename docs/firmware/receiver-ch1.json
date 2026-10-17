@@ -1,0 +1,8 @@
+{
+  "name": "PS5 wireless headphones - receiver (Wi-Fi channel 1)",
+  "version": "1.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    { "chipFamily": "ESP32-S3", "parts": [ { "path": "receiver-ch1.bin", "offset": 0 } ] }
+  ]
+}
