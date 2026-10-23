@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_err.h"
@@ -20,15 +21,32 @@
 #include "esp_now.h"
 #include "esp_event.h"
 #include "nvs_flash.h"
+#include "nvs.h"
+#include "driver/pulse_cnt.h"
+#include "driver/gpio.h"
 #include "usb/usb_host.h"
 #include "usb/uac_host.h"
 #include "link_proto.h"
 #include "jbuf.h"
+#if defined(LINK_MIC)
+#include "esp_adc/adc_continuous.h"
+#endif
 
 static const char *TAG = "link_rx";
 
 /* ---- tuning ---- */
-#define DONGLE_VOLUME        60      /* 0..100 on the dongle; PS5 volume is applied digitally on top */
+/* ---- volume (rotary encoder) ----
+ * Level 0..100   = dongle hardware volume (0..100 %)
+ * Level 101..124 = dongle at 100 % plus digital boost of 0.5 dB per level (max +12 dB),
+ *                  with a soft limiter so loud peaks round off instead of clipping hard. */
+#define ENC_GPIO_A           8       /* D5 */
+#define ENC_GPIO_B           9       /* D6 */
+#define ENC_COUNTS_PER_DETENT 4      /* typical EC11 / KY-040: one full quadrature cycle per click */
+#define ENC_REVERSE          0       /* set to 1 if clockwise turns the volume down */
+#define VOL_STEP             2       /* level change per click */
+#define VOL_HW_MAX           100
+#define VOL_MAX              124
+#define VOL_DEFAULT          100
 #define USB_RING_BYTES       768     /* 4 ms of 48 kHz stereo 16-bit queued for the dongle */
 #define USB_CHUNK_SAMPLES    48      /* write 1 ms at a time so the ring stays shallow */
 
@@ -38,6 +56,10 @@ static volatile uac_host_device_handle_t s_spk;
 static volatile int8_t s_rssi;
 static QueueHandle_t s_evq;
 static volatile uint32_t s_wr_ok, s_wr_err, s_wr_last_err;
+#if defined(LINK_MIC)
+static SemaphoreHandle_t s_mic_done;
+static void espnow_send_cb(const uint8_t *mac, esp_now_send_status_t st);
+#endif
 
 /* ------------------------------------------------------------------ */
 /* Remote log: every ESP_LOG line is also broadcast over ESP-NOW, and the
@@ -123,10 +145,265 @@ static void radio_init(void)
     memcpy(peer.peer_addr, BCAST, ESP_NOW_ETH_ALEN);
     ESP_ERROR_CHECK(esp_now_add_peer(&peer));
     /* remote log relay disabled: logs go to the UART TX pin only */
+#if defined(LINK_MIC)
+    /* Return path for the mic: same 11 Mbit/s DSSS rate as the audio link */
+    esp_now_rate_config_t rate = { .phymode = WIFI_PHY_MODE_11B, .rate = WIFI_PHY_RATE_11M_L };
+    ESP_ERROR_CHECK(esp_now_set_peer_rate_config(BCAST, &rate));
+    s_mic_done = xSemaphoreCreateBinary();
+    xSemaphoreGive(s_mic_done);
+    ESP_ERROR_CHECK(esp_now_register_send_cb(espnow_send_cb));
+#endif
 
     uint32_t ver = 0;
     esp_now_get_version(&ver);
     ESP_LOGI(TAG, "ESP-NOW v%" PRIu32 " listening on channel %d", ver, LINK_WIFI_CHANNEL);
+}
+
+/* ------------------------------------------------------------------ */
+/* Microphone (LINK_MIC builds): MAX9814 analog out -> ADC1 -> ESP-NOW -> transmitter */
+#if defined(LINK_MIC)
+
+#define MIC_ADC_CHANNEL   ADC_CHANNEL_3      /* GPIO4 on ESP32-S3 */
+#define MIC_OVERSAMPLE    5                  /* sample at 80 kHz, average 5 -> 16 kHz (~7 dB less ADC noise) */
+#define MIC_HPF_POLE      0.995f             /* DC blocker, ~13 Hz corner: removes the MAX9814's 1.25 V bias */
+
+static volatile uint32_t s_mic_sent, s_mic_busy, s_mic_peak, s_mic_clip;
+
+static void espnow_send_cb(const uint8_t *mac, esp_now_send_status_t st)
+{
+    (void)mac;
+    (void)st;
+    xSemaphoreGive(s_mic_done);
+}
+
+static void mic_task(void *arg)
+{
+    (void)arg;
+    adc_continuous_handle_t h;
+    const uint32_t frame_bytes = LINK_MIC_FRAME * MIC_OVERSAMPLE * SOC_ADC_DIGI_RESULT_BYTES;
+    adc_continuous_handle_cfg_t hc = {
+        .max_store_buf_size = frame_bytes * 4,
+        .conv_frame_size = frame_bytes,
+    };
+    ESP_ERROR_CHECK(adc_continuous_new_handle(&hc, &h));
+    adc_digi_pattern_config_t pat = {
+        .atten = ADC_ATTEN_DB_12,            /* ~0-3.1 V; MAX9814 swings 0.25-2.25 V */
+        .channel = MIC_ADC_CHANNEL,
+        .unit = ADC_UNIT_1,
+        .bit_width = SOC_ADC_DIGI_MAX_BITWIDTH,
+    };
+    adc_continuous_config_t cc = {
+        .pattern_num = 1,
+        .adc_pattern = &pat,
+        .sample_freq_hz = LINK_MIC_RATE * MIC_OVERSAMPLE,
+        .conv_mode = ADC_CONV_SINGLE_UNIT_1,
+        .format = ADC_DIGI_OUTPUT_FORMAT_TYPE2,
+    };
+    ESP_ERROR_CHECK(adc_continuous_config(h, &cc));
+    ESP_ERROR_CHECK(adc_continuous_start(h));
+
+    static uint8_t raw[LINK_MIC_FRAME * MIC_OVERSAMPLE * SOC_ADC_DIGI_RESULT_BYTES];
+    static link_mic_packet_t pkt;
+    pkt.magic = LINK_MIC_MAGIC;
+    uint32_t acc = 0, nacc = 0, n = 0, peak = 0;
+    float x_prev = -1.0f, y = 0.0f;
+
+    while (1) {
+        uint32_t got = 0;
+        if (adc_continuous_read(h, raw, sizeof(raw), &got, portMAX_DELAY) != ESP_OK) {
+            continue;
+        }
+        for (uint32_t i = 0; i + SOC_ADC_DIGI_RESULT_BYTES <= got; i += SOC_ADC_DIGI_RESULT_BYTES) {
+            const adc_digi_output_data_t *d = (const adc_digi_output_data_t *)&raw[i];
+            if (d->type2.channel != MIC_ADC_CHANNEL) {
+                continue;
+            }
+            acc += d->type2.data;
+            if (++nacc < MIC_OVERSAMPLE) {
+                continue;
+            }
+            float x = (float)acc * (16.0f / MIC_OVERSAMPLE);   /* 12-bit -> 16-bit scale */
+            acc = 0;
+            nacc = 0;
+            if (x_prev < 0.0f) {
+                x_prev = x;
+            }
+            y = x - x_prev + MIC_HPF_POLE * y;
+            x_prev = x;
+            int32_t v = (int32_t)y;
+            if (v > 32767) { v = 32767; s_mic_clip++; }
+            else if (v < -32768) { v = -32768; s_mic_clip++; }
+#if defined(LINK_MIC_DIAG)
+            /* Diagnostic: 10 s real mic, 10 s digital silence, 10 s 440 Hz test tone, repeat */
+            {
+                static uint32_t t;
+                static float ph;
+                uint32_t phase = (t++ / (LINK_MIC_RATE * 10)) % 3;
+                if (phase == 1) {
+                    v = 0;
+                } else if (phase == 2) {
+                    ph += 2.0f * 3.14159265f * 440.0f / LINK_MIC_RATE;
+                    if (ph > 6.2831853f) ph -= 6.2831853f;
+                    v = (int32_t)(3277.0f * sinf(ph));          /* -20 dBFS */
+                }
+            }
+#endif
+            uint32_t a = (uint32_t)(v < 0 ? -v : v);
+            if (a > peak) peak = a;
+            pkt.pcm[n++] = (int16_t)v;
+            if (n == LINK_MIC_FRAME) {
+                n = 0;
+                pkt.seq++;
+                if (xSemaphoreTake(s_mic_done, pdMS_TO_TICKS(4)) == pdTRUE) {
+                    if (esp_now_send(BCAST, (const uint8_t *)&pkt, sizeof(pkt)) == ESP_OK) {
+                        s_mic_sent++;
+                    } else {
+                        xSemaphoreGive(s_mic_done);
+                    }
+                } else {
+                    s_mic_busy++;
+                }
+                if (peak > s_mic_peak) s_mic_peak = peak;
+                peak = 0;
+            }
+        }
+    }
+}
+#endif
+
+/* ------------------------------------------------------------------ */
+/* Volume: dongle hardware volume + optional digital boost, set by the encoder */
+
+static volatile int s_vol = VOL_DEFAULT;
+static volatile int32_t s_boost_q12 = 4096;   /* digital gain, 4096 = 0 dB */
+static volatile int s_tick;                   /* samples left of the "limit reached" tick */
+
+static void apply_volume(int level)
+{
+    float boost_db = level > VOL_HW_MAX ? (float)(level - VOL_HW_MAX) * 0.5f : 0.0f;
+    s_boost_q12 = (int32_t)(powf(10.0f, boost_db / 20.0f) * 4096.0f + 0.5f);
+    uac_host_device_handle_t spk = s_spk;
+    if (spk) {
+        uac_host_device_set_volume(spk, (uint8_t)(level > VOL_HW_MAX ? VOL_HW_MAX : level));
+    }
+}
+
+/* Soft limiter: linear below the knee, then rounds off asymptotically towards full scale */
+static inline int16_t soft_clip(int32_t v)
+{
+    const int32_t knee = 24576;               /* -2.5 dBFS */
+    const int32_t room = 32767 - knee;
+    int32_t a = v < 0 ? -v : v;
+    if (a > knee) {
+        int32_t over = a - knee;
+        a = knee + (int32_t)(((int64_t)over * room) / (over + room));
+    }
+    return (int16_t)(v < 0 ? -a : a);
+}
+
+/* Post-process a block before it goes to the dongle: boost + limiter + limit tick */
+static void process_block(int16_t *pcm, size_t frames)
+{
+    int32_t g = s_boost_q12;
+    int tick = s_tick;
+    if (g == 4096 && tick == 0) {
+        return;
+    }
+    static uint32_t tick_ph;
+    for (size_t i = 0; i < frames; i++) {
+        int32_t add = 0;
+        if (tick > 0) {
+            /* 1.5 kHz square-ish tick at about -20 dBFS, 30 ms */
+            add = ((tick_ph++ / 16) & 1) ? 3000 : -3000;
+            tick--;
+        }
+        for (int c = 0; c < LINK_CHANNELS; c++) {
+            int32_t v = ((int32_t)pcm[i * LINK_CHANNELS + c] * g) >> 12;
+            pcm[i * LINK_CHANNELS + c] = soft_clip(v + add);
+        }
+    }
+    s_tick = tick;
+}
+
+static void vol_load(void)
+{
+    nvs_handle_t h;
+    uint8_t v;
+    if (nvs_open("link", NVS_READONLY, &h) == ESP_OK) {
+        if (nvs_get_u8(h, "vol", &v) == ESP_OK && v <= VOL_MAX) {
+            s_vol = v;
+        }
+        nvs_close(h);
+    }
+}
+
+static void vol_save(int level)
+{
+    nvs_handle_t h;
+    if (nvs_open("link", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, "vol", (uint8_t)level);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+/* Quadrature decoding in the PCNT peripheral (hardware, with glitch filter), polled every 10 ms */
+static void enc_task(void *arg)
+{
+    (void)arg;
+    pcnt_unit_config_t uc = { .low_limit = -1000, .high_limit = 1000 };
+    pcnt_unit_handle_t unit;
+    ESP_ERROR_CHECK(pcnt_new_unit(&uc, &unit));
+    pcnt_glitch_filter_config_t fc = { .max_glitch_ns = 1000 };
+    ESP_ERROR_CHECK(pcnt_unit_set_glitch_filter(unit, &fc));
+    pcnt_chan_config_t ca = { .edge_gpio_num = ENC_GPIO_A, .level_gpio_num = ENC_GPIO_B };
+    pcnt_chan_config_t cb = { .edge_gpio_num = ENC_GPIO_B, .level_gpio_num = ENC_GPIO_A };
+    pcnt_channel_handle_t cha, chb;
+    ESP_ERROR_CHECK(pcnt_new_channel(unit, &ca, &cha));
+    ESP_ERROR_CHECK(pcnt_new_channel(unit, &cb, &chb));
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(cha, PCNT_CHANNEL_EDGE_ACTION_DECREASE, PCNT_CHANNEL_EDGE_ACTION_INCREASE));
+    ESP_ERROR_CHECK(pcnt_channel_set_level_action(cha, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
+    ESP_ERROR_CHECK(pcnt_channel_set_edge_action(chb, PCNT_CHANNEL_EDGE_ACTION_INCREASE, PCNT_CHANNEL_EDGE_ACTION_DECREASE));
+    ESP_ERROR_CHECK(pcnt_channel_set_level_action(chb, PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
+    /* bare encoders switch to GND: use the internal pull-ups */
+    gpio_set_pull_mode(ENC_GPIO_A, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(ENC_GPIO_B, GPIO_PULLUP_ONLY);
+    ESP_ERROR_CHECK(pcnt_unit_enable(unit));
+    ESP_ERROR_CHECK(pcnt_unit_clear_count(unit));
+    ESP_ERROR_CHECK(pcnt_unit_start(unit));
+
+    int last = 0;
+    int64_t dirty_since = 0;
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        int c = 0;
+        pcnt_unit_get_count(unit, &c);
+        int detents = (c - last) / ENC_COUNTS_PER_DETENT;
+        if (detents != 0) {
+            last += detents * ENC_COUNTS_PER_DETENT;
+#if ENC_REVERSE
+            detents = -detents;
+#endif
+            int want = s_vol + detents * VOL_STEP;
+            int lvl = want < 0 ? 0 : (want > VOL_MAX ? VOL_MAX : want);
+            if (lvl != want || (lvl == s_vol && (lvl == 0 || lvl == VOL_MAX))) {
+                s_tick = 1440;                 /* 30 ms tick: limit reached */
+            }
+            if (lvl != s_vol) {
+                s_vol = lvl;
+                apply_volume(lvl);
+                dirty_since = esp_timer_get_time();
+            }
+        }
+        if (c > 800 || c < -800) {             /* keep the counter well inside its limits */
+            pcnt_unit_clear_count(unit);
+            last -= c;
+        }
+        if (dirty_since && esp_timer_get_time() - dirty_since > 2000000) {
+            vol_save(s_vol);                   /* remember it, but don't wear the flash on every click */
+            dirty_since = 0;
+        }
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -155,6 +432,8 @@ static void play_task(void *arg)
         size_t n = jb_pull(&s_jb, out, now);
         portEXIT_CRITICAL(&s_lock);
 #endif
+
+        process_block(out, n);
 
         if (spk == NULL) {
             /* No dongle: keep the buffer moving in real time so it is fresh when one appears */
@@ -336,9 +615,11 @@ static void open_speaker(uint8_t addr, uint8_t iface)
         return;
     }
     uac_host_device_set_mute(h, false);
-    uac_host_device_set_volume(h, DONGLE_VOLUME);
+    int lvl = s_vol;
+    uac_host_device_set_volume(h, (uint8_t)(lvl > VOL_HW_MAX ? VOL_HW_MAX : lvl));
+    apply_volume(lvl);
     s_spk = h;
-    rlog("dongle streaming: 48 kHz stereo 16-bit, volume %d", DONGLE_VOLUME);
+    rlog("dongle streaming: 48 kHz stereo 16-bit, volume level %d", lvl);
 }
 
 static void uac_task(void *arg)
@@ -413,7 +694,13 @@ void app_main(void)
     }
 #endif
 
+    vol_load();
+    apply_volume(s_vol);
+    xTaskCreatePinnedToCore(enc_task, "enc", 3072, NULL, 4, NULL, 0);
     xTaskCreatePinnedToCore(play_task, "play", 4096, NULL, 15, NULL, 1);
+#if defined(LINK_MIC)
+    xTaskCreatePinnedToCore(mic_task, "mic", 4096, NULL, 12, NULL, 1);
+#endif
     TaskHandle_t uac_h;
     xTaskCreatePinnedToCore(uac_task, "uac", 4096, NULL, 6, &uac_h, 0);
     xTaskCreatePinnedToCore(usb_probe_task, "usb_probe", 4096, NULL, 5, &s_probe_h, 0);
@@ -430,12 +717,21 @@ void app_main(void)
         portEXIT_CRITICAL(&s_lock);
         rlog("up %" PRIu32 "s | rssi %d dBm | pkts %" PRIu32 " | played %" PRIu32 " backup %" PRIu32
                  " lost %" PRIu32 " late %" PRIu32 " | drift -%" PRIu32 "/+%" PRIu32
-                 " | buffer %.1f ms | dongle %s | usb writes ok %" PRIu32 " err %" PRIu32 " (last %s)",
+                 " | buffer %.1f ms | dongle %s vol %d | usb writes ok %" PRIu32 " err %" PRIu32 " (last %s)",
                  (uint32_t)(esp_timer_get_time() / 1000000), s_rssi, s.packets - prev.packets, s.frames_played - prev.frames_played,
                  s.frames_recovered - prev.frames_recovered, s.frames_concealed - prev.frames_concealed,
                  s.frames_late - prev.frames_late, s.drops - prev.drops, s.inserts - prev.inserts,
-                 buf_us / 1000.0, s_spk ? "on" : "off", s_wr_ok, s_wr_err,
+                 buf_us / 1000.0, s_spk ? "on" : "off", s_vol, s_wr_ok, s_wr_err,
                  s_wr_err ? esp_err_to_name((esp_err_t)s_wr_last_err) : "-");
         prev = s;
+#if defined(LINK_MIC)
+        static uint32_t mic_prev_sent;
+        uint32_t ms = s_mic_sent;
+        uint32_t pk = s_mic_peak;
+        s_mic_peak = 0;
+        rlog("mic: sent %" PRIu32 " (expect ~833) busy %" PRIu32 " | peak %.1f%% full scale | clipped %" PRIu32,
+             ms - mic_prev_sent, s_mic_busy, pk * 100.0 / 32768.0, s_mic_clip);
+        mic_prev_sent = ms;
+#endif
     }
 }

@@ -52,3 +52,15 @@ typedef struct __attribute__((packed)) {
 /* Receiver -> transmitter text log lines (so the receiver's log can be read on the transmitter's serial port) */
 #define LINK_LOG_MAGIC        0x444C5350u   /* "PSLD" */
 #define LINK_LOG_MAX          232
+
+/* Receiver -> transmitter microphone stream (optional, LINK_MIC builds).
+ * 16 kHz mono 16-bit, 6 ms per packet; the transmitter upsamples to 48 kHz for USB. */
+#define LINK_MIC_MAGIC        0x4D4C5350u   /* "PSLM" */
+#define LINK_MIC_RATE         16000
+#define LINK_MIC_FRAME        96            /* samples per packet = 6 ms */
+
+typedef struct __attribute__((packed)) {
+    uint32_t magic;
+    uint32_t seq;
+    int16_t  pcm[LINK_MIC_FRAME];
+} link_mic_packet_t;                        /* 200 bytes */

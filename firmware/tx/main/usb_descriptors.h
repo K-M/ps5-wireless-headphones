@@ -4,10 +4,19 @@
 #define UAC1_ENTITY_INPUT_TERMINAL  0x01
 #define UAC1_ENTITY_FEATURE_UNIT    0x02
 #define UAC1_ENTITY_OUTPUT_TERMINAL 0x03
+#define UAC1_ENTITY_MIC_IT          0x04
+#define UAC1_ENTITY_MIC_FU          0x05
+#define UAC1_ENTITY_MIC_OT          0x06
+
+#define EPNUM_AUDIO_OUT             0x01
+#define EPNUM_AUDIO_IN              0x81
 
 enum {
     ITF_NUM_AUDIO_CONTROL = 0,
     ITF_NUM_AUDIO_STREAMING,
+#if defined(LINK_MIC)
+    ITF_NUM_AUDIO_STREAMING_MIC,
+#endif
     ITF_NUM_TOTAL
 };
 

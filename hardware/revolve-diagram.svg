@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 600" font-family="Helvetica, Arial, sans-serif" font-size="14">
+  <rect width="980" height="600" fill="#ffffff"/>
+
+  <!-- ================= LEFT: FRONT VIEW (your sketch) ================= -->
+  <text x="20" y="30" font-size="17" font-weight="bold">1. Cross-section sketch (front view)</text>
+  <text x="20" y="50" fill="#555">Draw the axis line FAR BELOW everything. It must not touch any profile.</text>
+
+  <!-- magnet cover -->
+  <rect x="140" y="80" width="200" height="14" fill="#cfe3f7" stroke="#1f6fbf"/>
+  <text x="350" y="92" fill="#1f6fbf">magnet cover (extrude straight)</text>
+  <!-- middle body -->
+  <path d="M140 100 H340 V150 Q240 138 140 150 Z" fill="#cfe3f7" stroke="#1f6fbf"/>
+  <text x="350" y="128" fill="#1f6fbf">middle body (extrude straight)</text>
+  <!-- headband gap -->
+  <path d="M150 152 Q240 140 330 152 L330 162 Q240 230 150 162 Z" fill="#f2d7b3" stroke="#b06a00" stroke-dasharray="4 3"/>
+  <text x="350" y="175" fill="#b06a00">headband (gap)</text>
+  <!-- bottom clip -->
+  <path d="M130 158 L150 158 Q240 245 330 158 L350 158 Q240 275 130 158 Z" fill="#d6efd6" stroke="#2e8b2e"/>
+  <text x="350" y="215" fill="#2e8b2e">bottom clip (REVOLVE)</text>
+
+  <!-- top contact reference -->
+  <line x1="110" y1="152" x2="130" y2="152" stroke="#000"/>
+  <text x="40" y="156" font-size="12">top contact</text>
+
+  <!-- dimension 99.33 -->
+  <line x1="120" y1="152" x2="120" y2="470" stroke="#000" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text x="62" y="320" font-weight="bold">99.33</text>
+  <text x="62" y="337" font-size="12">mm</text>
+
+  <!-- axis line -->
+  <line x1="100" y1="470" x2="420" y2="470" stroke="#d00000" stroke-width="2.5" stroke-dasharray="10 5"/>
+  <text x="140" y="495" fill="#d00000" font-weight="bold">Revolve AXIS: horizontal construction line</text>
+  <text x="140" y="513" fill="#d00000">(below all profiles, runs left↔right across the width)</text>
+
+  <!-- wrong example -->
+  <line x1="130" y1="150" x2="350" y2="150" stroke="#d00000" stroke-width="1.5"/>
+  <text x="430" y="150" fill="#d00000" font-size="13">✗ NOT here (through the parts → "crosses axis" error)</text>
+
+  <!-- ================= RIGHT: SIDE VIEW ================= -->
+  <text x="560" y="250" font-size="17" font-weight="bold">2. Side view (what Revolve does)</text>
+  <text x="560" y="270" fill="#555">The profile swings around the axis → follows the headband curve.</text>
+
+  <!-- headband arc, centre at (760,560) radius 250 -->
+  <path d="M 560 420 A 250 250 0 0 1 960 420" fill="none" stroke="#b06a00" stroke-width="10" stroke-opacity="0.45"/>
+  <text x="905" y="395" fill="#b06a00" font-size="13">headband</text>
+  <!-- revolved clip segment (±17°) -->
+  <path d="M 687 321 A 250 250 0 0 1 833 321 L 829 336 A 235 235 0 0 0 691 336 Z" fill="#d6efd6" stroke="#2e8b2e"/>
+  <text x="700" y="300" fill="#2e8b2e" font-size="13">revolved part</text>
+  <!-- radius lines -->
+  <circle cx="760" cy="560" r="5" fill="#d00000"/>
+  <line x1="760" y1="560" x2="687" y2="321" stroke="#999" stroke-dasharray="4 3"/>
+  <line x1="760" y1="560" x2="833" y2="321" stroke="#999" stroke-dasharray="4 3"/>
+  <line x1="760" y1="560" x2="760" y2="310" stroke="#000" marker-end="url(#a)"/>
+  <text x="768" y="460" font-weight="bold">R 99.33</text>
+  <text x="700" y="585" fill="#d00000">axis (seen end-on)</text>
+  <path d="M 738 500 A 62 62 0 0 1 782 500" fill="none" stroke="#000"/>
+  <text x="742" y="492" font-size="12">angle</text>
+  <text x="560" y="540" font-size="12" fill="#555">Angle (symmetric) = length ÷ 99.33 × 57.3</text>
+  <text x="560" y="556" font-size="12" fill="#555">30 mm → 17.3°   40 mm → 23.1°</text>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#000"/>
+    </marker>
+  </defs>
+</svg>

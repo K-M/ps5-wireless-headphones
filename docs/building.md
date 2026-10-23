@@ -35,7 +35,10 @@ idf.py -DLINK_DIAG="LINK_WIFI_CHANNEL=6" build
 | Setting | File | Default |
 |---|---|---|
 | Jitter-buffer depth (frames of 3 ms) | `rx/main/jbuf.h` `JB_TARGET_FRAMES` | 4 |
-| Dongle hardware volume | `rx/main/main.c` `DONGLE_VOLUME` | 60 |
+| Encoder pins | `rx/main/main.c` `ENC_GPIO_A` / `ENC_GPIO_B` | GPIO8 (D5) / GPIO9 (D6) |
+| Encoder counts per detent / direction | `ENC_COUNTS_PER_DETENT` / `ENC_REVERSE` | 4 / 0 |
+| Volume step, max boost level, default | `VOL_STEP` / `VOL_MAX` / `VOL_DEFAULT` | 2 / 124 (+12 dB) / 100 |
+| TX send queue depth | `tx/main/main.c` `TXQ_DEPTH` | 1 (newest frame only) |
 | Radio rate | `tx/main/main.c` `radio_init()` | 802.11b 11 Mbit/s |
 
 ## Host simulation
@@ -46,3 +49,13 @@ idf.py -DLINK_DIAG="LINK_WIFI_CHANNEL=6" build
 cd firmware/test
 gcc -O2 -I../common/linkproto/include -I../rx/main sim.c ../rx/main/jbuf.c -lm -o sim && ./sim
 ```
+
+## Experimental: microphone (`LINK_MIC`)
+
+Both projects contain an unfinished mic return path behind a build flag:
+
+```bash
+idf.py -DLINK_MIC=1 build
+```
+
+With this flag, the transmitter enumerates as a headset (PID `0x8012`) and the receiver samples an analog mic on GPIO4. It is **not usable as is**: radio bursts couple into the ESP32-S3 ADC and produce a loud 166 Hz tone. The planned fix is an I2S MEMS mic. Default builds don't include any of this code.

@@ -1,103 +1,169 @@
-# PS5 Wireless Headphones (any wired headphone, ~20 ms)
+# PS5 Wireless Headphones: any 3.5 mm headphone, ~20 ms
 
-Turn **any headphone with a 3.5 mm input** — Sony WH-1000XM4/XM5, Bose, studio cans — into a **low-latency wireless PS5 headset** with two ESP32-S3 boards, a cheap USB audio dongle and a few hobby modules.
+Make **any headphone with a 3.5 mm input** (Sony WH-1000XM4/XM5, Bose, studio headphones) into a **low-latency wireless headset for the PS5**. You need two ESP32-S3 boards, a cheap USB audio dongle and a few hobby modules.
 
-The PS5 has no Bluetooth audio, and Bluetooth dongles add 150–250 ms with most headphones. This link skips Bluetooth entirely: uncompressed 48 kHz / 16-bit stereo over ESP-NOW into your headphones' wired input.
+The PS5 has no Bluetooth audio, and Bluetooth dongles add 150–250 ms with most headphones. This link doesn't use Bluetooth. It sends uncompressed 48 kHz / 16-bit stereo over ESP-NOW to the headphones' wired input, and the headphones stay in wired mode, so ANC still works.
 
-<!-- TODO: hero photo — headphones with the receiver clipped on, PS5 in background -->
-![Hero photo](images/hero.jpg)
+![Headphones with the receiver and power modules on the headband, PS5 and DualSense behind](images/hero.jpg)
 
 ```
-PS5 ──USB──▶ [ESP32-S3 transmitter] ~~ ESP-NOW 2.4 GHz ~~▶ [ESP32-S3 receiver] ──USB──▶ USB-to-3.5 mm dongle ──▶ headphones
-             shows up as "USB Headphones"                    USB host, on the headband
+PS5 ──USB──▶ [ESP32-S3 transmitter] ~~ ESP-NOW, 2.4 GHz ~~▶ [ESP32-S3 receiver] ──USB──▶ USB-to-3.5 mm dongle ──▶ headphones
+             appears as "USB Headphones"                     on the headband, battery powered
 ```
 
 ## Highlights
 
-- **Plug and play on PS5** — the transmitter enumerates as a standard USB Audio Class 1 headset. No PS5 settings beyond picking *USB Headphones* as output.
-- **~20 ms end to end** (calculated from measured buffer levels, see [Latency](#latency)). No perceptible lip-sync offset in testing.
-- **Lossless audio** — raw 16-bit PCM, not a lossy codec. Each packet also carries a compressed copy of the previous frame, so a single lost packet is repaired invisibly.
-- **Keeps every headphone feature** — ANC, EQ and battery life are untouched because the headphones run in wired mode.
-- **One-click install** from the browser: **[web flasher](https://k-m.github.io/ps5-wireless-headphones/)** (Chrome/Edge).
+- **Plug and play on the PS5.** The transmitter is a standard USB Audio Class 1 device. The only setting is choosing it as the output device.
+- **About 20 ms end to end.** This is calculated from measured buffer levels; see [Latency](#latency). In testing there was no visible lip-sync offset.
+- **Uncompressed audio.** It sends raw 16-bit PCM, not a lossy codec. Each packet also carries a compressed copy of the previous frame, so a single lost packet is repaired without an audible gap.
+- **Volume knob with boost.** A rotary encoder on the headband sets the dongle volume. Past 100 % it adds up to +12 dB of digital gain with a soft limiter. The PS5's USB output is quiet, so the boost is useful.
+- **All headphone features still work.** ANC, EQ and battery behave as normal because the headphones run in wired mode.
+- **Install from the browser** with the **[web flasher](https://k-m.github.io/ps5-wireless-headphones/)** (Chrome or Edge).
+
+| | |
+|---|---|
+| ![Both modules on the headband, top view](images/topdown.jpg) | ![Power module and receiver module laid out](images/modules-laid-out.jpg) |
+| Two modules on the headband, one on each side | Power module (left) and receiver with volume knob (right) |
+| ![Transmitter plugged into the PS5 front USB-C port](images/transmitter-ps5.jpg) | ![PS5 sound settings showing ESP32-S3 USB Audio](images/ps5-sound-settings.jpg) |
+| Transmitter in the PS5 front port | PS5: *Output Device → USB Headphones (ESP32-S3 USB Audio)* |
 
 ## Parts
 
-| Part | Notes |
-|---|---|
-| Waveshare ESP32-S3-Pico | Transmitter, plugs into the PS5. Any ESP32-S3 board with native USB should work. |
-| Waveshare ESP32-S3-Nano | Receiver (USB host). |
-| USB-to-3.5 mm audio dongle | Must support 48 kHz 16-bit stereo (most cheap USB-C/USB-A dongles do). Tested: Generalplus `1b3f:2008`. |
-| USB OTG adapter | Nano's USB-C port → dongle. |
-| 1S LiPo (500 mAh) | ~2.5–3 h of use. |
-| TP4056 charger module (with protection) | Replace R_PROG (R3, `122`) with 3 kΩ (`302`) for a 400 mA charge on a 500 mAh cell. Stock is 1 A. |
-| MT3608 boost module | Set to **5.05 V before connecting**. The receiver browns out below ~4.5 V, so it cannot run straight off the LiPo. |
-| 470 µF capacitor | Across the Nano's VBUS and GND. |
+| Part | Qty | Notes |
+|---|---|---|
+| Waveshare ESP32-S3-Pico | 1 | Transmitter that plugs into the PS5. Any ESP32-S3 board with native USB should work. |
+| Waveshare ESP32-S3-Nano | 1 | Receiver (USB host). |
+| USB-to-3.5 mm audio dongle | 1 | Must support 48 kHz 16-bit stereo; most cheap dongles do. Tested with a Generalplus `1b3f:2008`. |
+| USB OTG adapter | 1 | Connects the Nano's USB-C port to the dongle. |
+| Rotary encoder (EC11/KY-040 type) | 1 | Volume control. A push switch isn't needed. |
+| 1S LiPo, 500 mAh | 1 | About 1.5–2 h of use (estimated). A bigger cell gives proportionally longer use. |
+| HW-107 (TP4056 with protection) | 1 | Charger. Change R_PROG (R3, marked `122`) to 3 kΩ (`302`) for a 400 mA charge. The stock 1 A is too high for 500 mAh. |
+| HW-106 boost module | 1 | Takes the LiPo voltage up to 5 V. The receiver browns out below about 4.5 V. |
+| DPDT slide switch | 1 | Power on/off; also routes USB-C power to the charger only when the unit is off. |
+| USB-C breakout (power only) | 1 | Charging port. |
+| Green LED + 1 kΩ resistor | 1 | Power indicator. |
+| 470 µF capacitor | 1 | Across VBUS and GND at the Nano. |
+| 100–220 µF capacitor | 1 | Across the HW-106 input. |
+| Magnets, M2–M2.5 screws, 3D-printed cases | n/a | See [`hardware/`](hardware/). |
 
-STL files for the enclosures are in [`hardware/`](hardware/).
+## Wiring
 
-## Wiring (receiver)
+The build has two modules on the headband, joined by a short USB cable that carries 5 V.
+
+**Power module**
 
 ```
-LiPo ──▶ TP4056 B+/B−
-TP4056 OUT+/OUT− ──[switch]──▶ MT3608 VIN+/VIN−
-MT3608 OUT+ ──▶ Nano VBUS pin      (NOT VIN)
-MT3608 OUT− ──▶ Nano GND
+LiPo ───────────────▶ HW-107  B+ / B−
+
+DPDT pole 1:  common ◀── HW-107 OUT+
+              ON     ──▶ HW-106 IN+    ──┬── green LED ── 1 kΩ ── GND
+                                         └── 100–220 µF to GND
+DPDT pole 2:  common ──▶ HW-107 IN+
+              OFF    ◀── USB-C breakout VBUS
+
+HW-106 OUT+ / OUT− ──▶ USB cable ──▶ receiver module 5 V / GND
+All grounds common.
+```
+
+Switch ON: the battery powers the boost and the LED lights. Switch OFF: the boost is disconnected and USB-C charges the battery. Because charging and running never happen at the same time, you don't need a load-sharing circuit.
+
+**Receiver module**
+
+```
+5 V from power module ──▶ Nano VBUS pin    (NOT VIN)
+GND                   ──▶ Nano GND
 470 µF across VBUS–GND at the Nano
+
+Encoder A ──▶ D5 (GPIO8)
+Encoder B ──▶ D6 (GPIO9)
+Encoder C ──▶ GND           (internal pull-ups are used; no resistors)
+
 Nano USB-C ──OTG adapter──▶ USB audio dongle ──3.5 mm──▶ headphones
 ```
 
-The Nano's VBUS pin is wired straight to its USB-C port, so powering VBUS is what powers the dongle. Powering VIN instead leaves the dongle dead.
+The Nano's VBUS pin connects directly to its USB-C port, so feeding VBUS is what powers the dongle. If you feed VIN instead, the dongle gets no power.
 
-The transmitter needs no wiring: plug it into a PS5 USB port.
+The transmitter needs no wiring. Plug it into a PS5 USB port.
 
 ## Install
 
 1. Open the **[web flasher](https://k-m.github.io/ps5-wireless-headphones/)** in Chrome or Edge.
-2. Pick the Wi-Fi channel (13 is the default; both boards must match).
-3. Flash the transmitter (hold BOOT while plugging in) and the receiver (bridge B1 to GND, tap RESET).
-4. Plug the transmitter into the PS5 → **Settings → Sound → Audio Output → Output Device → USB Headphones**.
-5. Power the receiver, turn on the headphones, and set the PS5 volume to ~30% to start.
+2. Pick the Wi-Fi channel. The default is 13, and both boards must use the same one.
+3. Flash both boards:
+   - **Transmitter:** hold BOOT while you plug it in.
+   - **Receiver:** bridge B1 to GND, then tap RESET.
+4. Plug the transmitter into the PS5, then go to **Settings → Sound → Audio Output → Output Device → USB Headphones**.
+5. Switch the receiver on and turn on the headphones. Set the PS5 volume to maximum and use the knob for volume.
 
-Prefer the command line? Prebuilt images are in [`docs/firmware/`](docs/firmware/): flash the `.bin` at offset `0x0` with `esptool.py --chip esp32s3 write_flash 0x0 <file>.bin`.
+If you'd rather use the command line, prebuilt images are in [`docs/firmware/`](docs/firmware/). Flash the `.bin` at offset `0x0`:
+
+```
+esptool.py --chip esp32s3 write_flash 0x0 <file>.bin
+```
+
+## Volume knob
+
+| Level | Effect |
+|---|---|
+| 0–100 | Dongle hardware volume, 2 % per detent |
+| 101–124 | Digital boost, +0.5 dB per detent, up to +12 dB, with a soft limiter so peaks don't clip |
+| Limits | A short tick in the headphones when you hit 0 or maximum |
+
+The level is saved 2 s after the last change and restored at power-up. The default is 100 (no boost).
 
 ## Latency
 
-Calculated per stage from the receiver's logged buffer levels (not a single end-to-end measurement):
+These figures are calculated per stage from the receiver's logged buffer levels. They are not a single end-to-end measurement.
 
 | Stage | Time |
 |---|---|
-| Assemble 3 ms audio frame on the transmitter | ≤ 3 ms |
+| Assemble a 3 ms audio frame on the transmitter | ≤ 3 ms |
 | Radio send (11 Mbit/s DSSS, measured) | ~1.4 ms |
 | Jitter buffer (4 frames, measured average) | ~11.7 ms |
-| USB host queue to dongle | ~2–4 ms |
+| USB host queue to the dongle | ~2–4 ms |
 | Dongle DAC | ~1 ms |
 | **Total** | **≈ 20 ms** |
 
+For comparison, Bluetooth headphones over a USB dongle add about 150–250 ms. Commercial wireless IEM kits advertise about 5–12 ms and cost about ₹6,000 / $70–140 or more.
+
+An end-to-end measurement hasn't been done yet. A measurement kit is included in [`tools/latency/`](tools/latency/); PRs with results are welcome.
+
 ## How it works
 
-- **Transmitter:** TinyUSB UAC1 device (44.1/48 kHz, adaptive isochronous). PS5 audio is resampled to 48 kHz if needed, cut into 3 ms frames, and broadcast over ESP-NOW v2 at 11 Mbit/s DSSS (tested more reliable than OFDM rates for 740-byte packets).
-- **Packet:** 12-byte header + 576 bytes PCM + 152-byte IMA-ADPCM copy of the previous frame.
-- **Receiver:** a 4-frame jitter buffer; recovers lost frames from the backup copy, fades out/in on longer gaps, and corrects clock drift by resampling a whole frame by ±1 sample (inaudible).
-- **USB host:** Espressif `usb_host_uac` driving the dongle, with the periodic-OUT FIFO bias enabled so 192-byte isochronous packets fit.
+- **Transmitter:** a TinyUSB UAC1 device (44.1/48 kHz, adaptive isochronous). If the input is 44.1 kHz it is resampled to 48 kHz. The audio is cut into 3 ms frames and broadcast over ESP-NOW v2 at 11 Mbit/s DSSS. In testing, DSSS was more reliable than OFDM rates for 740-byte packets.
+  - The send queue holds one frame, the newest. A deeper queue only delivered stale frames late.
+- **Packet (740 bytes):** a 12-byte header, 576 bytes of PCM (3 ms), and a 152-byte IMA-ADPCM copy of the previous frame.
+- **Receiver:** a 4-frame jitter buffer.
+  - Lost frames are rebuilt from the backup copy. Longer gaps fade out and back in.
+  - Clock drift is corrected by resampling a whole frame by ±1 sample (144 → 143/145) with a ±1.5 ms deadband, which is inaudible.
+- **USB host:** Espressif's `usb_host_uac` drives the dongle. The periodic-OUT FIFO bias is enabled so that 192-byte isochronous packets fit.
 
-Details in [`docs/troubleshooting.md`](docs/troubleshooting.md) and [`docs/building.md`](docs/building.md).
+More detail: [troubleshooting](docs/troubleshooting.md), [building from source](docs/building.md), [hardware](hardware/).
+
+## Compatibility
+
+- **PS5:** tested.
+- **PC/Mac and other USB-audio hosts:** expected to work, since it is a standard UAC1 device. Not tested.
+- **Xbox:** not supported. Xbox doesn't accept generic USB audio devices.
 
 ## Known limitations
 
-- **No microphone.** Most headphones (including the XM4) don't carry the mic over the 3.5 mm cable. Use the DualSense mic for chat.
-- **Shares 2.4 GHz.** On a busy Wi-Fi channel you'll hear occasional ticks; switch channels in the flasher.
-- **Needs 5 V on the receiver** (hence the boost module).
+- **No microphone.** The XM4 doesn't carry its mic over the 3.5 mm cable. An analog mic on the receiver was tried and dropped: the ESP32's own radio bursts couple into its ADC at 166 Hz. Use the DualSense mic for chat.
+- **Shares 2.4 GHz.** On a busy Wi-Fi channel you'll hear occasional ticks. Channel 1 was unusable in testing and channel 13 was clean. Change channel in the flasher.
+- **Battery:** about 1.5–2 h on 500 mAh (estimated, not measured). It can't charge while switched on, and there is no low-battery warning.
 
 ## Roadmap
 
-- [ ] Mic return path (receiver mic → PS5 as a USB headset)
+- [ ] Measured end-to-end latency and battery runtime
+- [ ] STL files
 - [ ] Automatic channel selection
-- [ ] Custom single-board receiver PCB
+- [ ] Mic return path using an I2S MEMS mic (avoids the ADC noise problem)
+- [ ] Compact receiver: XIAO ESP32-S3 + I2S DAC instead of the Nano + USB dongle
 
-Contributions welcome. See issues labelled *good first issue*.
+Contributions are welcome.
 
 ## License
 
-MIT for this project's code. Bundled third-party components keep their own licenses: TinyUSB (MIT), Espressif `usb_host_uac` (Apache-2.0), Espressif `cmake_utilities` (Apache-2.0).
+MIT for this project's code. Bundled third-party components keep their own licenses: TinyUSB (MIT), Espressif `usb_host_uac` (Apache-2.0) and Espressif `cmake_utilities` (Apache-2.0).
 
-Not affiliated with Sony Interactive Entertainment. "PS5" is used only to describe compatibility.
+This project is not affiliated with Sony Interactive Entertainment. "PS5" is used only to describe compatibility.
