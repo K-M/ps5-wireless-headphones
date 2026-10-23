@@ -12,16 +12,15 @@ Printable STLs and the editable Fusion 360 sources for both enclosures.
 
 ![Headset module parts](headset-parts.png)
 
-The parts are named by their shape. The file names don't say which module each part belongs to, so check against the photos below:
-
 | Part | Qty | Notes |
 |---|---|---|
-| `box_1`, `box_2` | 1 each | Module bodies, 35 × 70 × 36 mm |
-| `lid_round-hole` | 1 | Lid with the encoder-shaft hole (receiver) |
-| `lid_rect-cutout` | 1 | Lid with the slide-switch cutout (power module) |
-| `base_6-screw` | 1 | Screwed panel, 6 × M2 |
-| `bracket` | 1 | Internal retaining bracket |
-| `mount_clip`, `mount_body`, `mount_cover` | 1 set per module (the plate has one set, so print it twice) | Curved headband mount (see below) |
+| `receiver_box` | 1 | Houses the ESP32-S3-Nano (the box with the round side hole) |
+| `receiver_lid` | 1 | Lid with the encoder-knob hole |
+| `power_box` | 1 | Houses the LiPo, HW-107, HW-106, switch and LED |
+| `power_lid` | 1 | Lid with the slide-switch cutout |
+| `magnet_plate` | 2 | One per box, 6 × M2 screws; it attaches the box to the headband mount |
+| `board_bracket` | 2 | Holds the ESP32 and HW-106 boards in place by sitting in the pin-header grooves (neither board has mounting holes) |
+| `mount_clip`, `mount_body`, `mount_magnet_cover` | 2 each | Curved headband mount, one per module (see below) |
 
 ![Transmitter case and lid](transmitter-parts.png)
 
