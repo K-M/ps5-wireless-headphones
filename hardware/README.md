@@ -1,6 +1,31 @@
 # Hardware
 
-STL files are not published yet. The design is simple enough to recreate. This page records the dimensions and the method.
+Printable STLs and the editable Fusion 360 sources for both enclosures.
+
+## Files
+
+| Folder | Contents |
+|---|---|
+| [`stl/headset-modules/`](stl/headset-modules/) | One STL per part, plus `all-parts_plate.stl` (the original export, all parts laid out together) |
+| [`stl/transmitter/`](stl/transmitter/) | `case.stl` and `lid.stl` for the Waveshare ESP32-S3-Pico, plus the combined plate |
+| [`fusion/`](fusion/) | `headset-modules.f3d` and `transmitter.f3d`. Edit these to fit other headbands or boards. |
+
+![Headset module parts](headset-parts.png)
+
+The parts are named by their shape. The file names don't say which module each part belongs to, so check against the photos below:
+
+| Part | Qty | Notes |
+|---|---|---|
+| `box_1`, `box_2` | 1 each | Module bodies, 35 × 70 × 36 mm |
+| `lid_round-hole` | 1 | Lid with the encoder-shaft hole (receiver) |
+| `lid_rect-cutout` | 1 | Lid with the slide-switch cutout (power module) |
+| `base_6-screw` | 1 | Screwed panel, 6 × M2 |
+| `bracket` | 1 | Internal retaining bracket |
+| `mount_clip`, `mount_body`, `mount_cover` | 1 set per module (the plate has one set, so print it twice) | Curved headband mount (see below) |
+
+![Transmitter case and lid](transmitter-parts.png)
+
+Print in PLA or PETG at 0.2 mm layers. No supports are needed for the lids and plates. The boxes and the curved mount parts may need supports, depending on how you orient them.
 
 ## Layout
 

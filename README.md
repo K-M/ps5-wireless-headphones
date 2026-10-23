@@ -44,7 +44,7 @@ PS5 ──USB──▶ [ESP32-S3 transmitter] ~~ ESP-NOW, 2.4 GHz ~~▶ [ESP32-S
 | Green LED + 1 kΩ resistor | 1 | Power indicator. |
 | 470 µF capacitor | 1 | Across VBUS and GND at the Nano. |
 | 100–220 µF capacitor | 1 | Across the HW-106 input. |
-| Magnets, M2–M2.5 screws, 3D-printed cases | n/a | See [`hardware/`](hardware/). |
+| Magnets, M2–M2.5 screws, 3D-printed cases | n/a | STLs and Fusion 360 sources are in [`hardware/`](hardware/). |
 
 ## Wiring
 
@@ -109,7 +109,7 @@ esptool.py --chip esp32s3 write_flash 0x0 <file>.bin
 | 101–124 | Digital boost, +0.5 dB per detent, up to +12 dB, with a soft limiter so peaks don't clip |
 | Limits | A short tick in the headphones when you hit 0 or maximum |
 
-The level is saved 2 s after the last change and restored at power-up. The default is 100 (no boost).
+The level is saved 2 s after the last change and restored at power-up. The default is 100 (no boost). Tested on the build shown here.
 
 ## Latency
 
@@ -155,7 +155,6 @@ More detail: [troubleshooting](docs/troubleshooting.md), [building from source](
 ## Roadmap
 
 - [ ] Measured end-to-end latency and battery runtime
-- [ ] STL files
 - [ ] Automatic channel selection
 - [ ] Mic return path using an I2S MEMS mic (avoids the ADC noise problem)
 - [ ] Compact receiver: XIAO ESP32-S3 + I2S DAC instead of the Nano + USB dongle
